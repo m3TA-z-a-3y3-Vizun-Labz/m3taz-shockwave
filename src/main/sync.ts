@@ -14,6 +14,7 @@ import { spawn } from 'node:child_process';
 import { app } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { mainFetch, formatFetchError, MAIN_FETCH_TIMEOUT_MS } from './mainFetch.js';
 
 const GITHUB_API = 'https://api.github.com';
 const API_HEADERS = (pat) => ({
@@ -32,13 +33,16 @@ const API_HEADERS = (pat) => ({
 export async function verifyPat(pat) {
   if (!pat) return { ok: false, error: 'No token provided' };
   try {
-    const res = await fetch(`${GITHUB_API}/user`, { headers: API_HEADERS(pat) });
+    const res = await mainFetch(`${GITHUB_API}/user`, {
+      headers: API_HEADERS(pat),
+      signal: AbortSignal.timeout(MAIN_FETCH_TIMEOUT_MS),
+    });
     if (res.status === 401) return { ok: false, error: 'Invalid or expired token' };
     if (!res.ok) return { ok: false, error: `GitHub returned ${res.status}` };
     const data = await res.json();
     return { ok: true, login: data.login, id: data.id, name: data.name ?? null };
   } catch (err: any) {
-    return { ok: false, error: `Network error: ${err.message}` };
+    return { ok: false, error: `Network error: ${formatFetchError(err)}` };
   }
 }
 
@@ -58,7 +62,10 @@ export async function listRepos(pat) {
   try {
     for (let page = 1; page <= maxPages; page++) {
       const url = `${GITHUB_API}/user/repos?per_page=${perPage}&page=${page}&sort=pushed&affiliation=owner,collaborator,organization_member`;
-      const res = await fetch(url, { headers: API_HEADERS(pat) });
+      const res = await mainFetch(url, {
+        headers: API_HEADERS(pat),
+        signal: AbortSignal.timeout(MAIN_FETCH_TIMEOUT_MS),
+      });
       if (res.status === 401) return { ok: false, error: 'Invalid or expired token' };
       if (!res.ok) return { ok: false, error: `GitHub returned ${res.status}` };
       const batch = await res.json();
@@ -76,7 +83,7 @@ export async function listRepos(pat) {
     }
     return { ok: true, repos: out };
   } catch (err: any) {
-    return { ok: false, error: `Network error: ${err.message}` };
+    return { ok: false, error: `Network error: ${formatFetchError(err)}` };
   }
 }
 
@@ -89,13 +96,14 @@ export async function listRepos(pat) {
 export async function probeWrite(owner, repo, pat) {
   if (!pat) return { ok: false, error: 'No token provided' };
   try {
-    const res = await fetch(`${GITHUB_API}/repos/${owner}/${repo}/git/refs`, {
+    const res = await mainFetch(`${GITHUB_API}/repos/${owner}/${repo}/git/refs`, {
       method: 'POST',
       headers: { ...API_HEADERS(pat), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ref: 'refs/heads/__shockwave_probe__',
         sha: '0000000000000000000000000000000000000000',
       }),
+      signal: AbortSignal.timeout(MAIN_FETCH_TIMEOUT_MS),
     });
     if (res.status === 422) return { ok: true };
     if (res.status === 403) return { ok: false, error: 'Token lacks Contents:Write on this repo' };
@@ -103,7 +111,7 @@ export async function probeWrite(owner, repo, pat) {
     if (res.status === 401) return { ok: false, error: 'Invalid or expired token' };
     return { ok: false, error: `GitHub returned ${res.status}` };
   } catch (err: any) {
-    return { ok: false, error: `Network error: ${err.message}` };
+    return { ok: false, error: `Network error: ${formatFetchError(err)}` };
   }
 }
 
@@ -117,7 +125,7 @@ export async function createRepo(name, pat, { private: isPrivate = true, descrip
   if (!pat) return { ok: false, error: 'No token provided' };
   if (!name) return { ok: false, error: 'Repo name required' };
   try {
-    const res = await fetch(`${GITHUB_API}/user/repos`, {
+    const res = await mainFetch(`${GITHUB_API}/user/repos`, {
       method: 'POST',
       headers: { ...API_HEADERS(pat), 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -126,6 +134,7 @@ export async function createRepo(name, pat, { private: isPrivate = true, descrip
         private: isPrivate,
         auto_init: false,
       }),
+      signal: AbortSignal.timeout(MAIN_FETCH_TIMEOUT_MS),
     });
     if (res.status === 201) {
       const data = await res.json();
@@ -145,7 +154,7 @@ export async function createRepo(name, pat, { private: isPrivate = true, descrip
     if (res.status === 401) return { ok: false, error: 'Invalid or expired token' };
     return { ok: false, error: `GitHub returned ${res.status}` };
   } catch (err: any) {
-    return { ok: false, error: `Network error: ${err.message}` };
+    return { ok: false, error: `Network error: ${formatFetchError(err)}` };
   }
 }
 

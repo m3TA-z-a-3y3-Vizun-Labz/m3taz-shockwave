@@ -9,10 +9,12 @@ import { createRenameCorrelator } from './renameCorrelator.js';
 import { agentSend, agentAbort, agentReset } from './codingAgent.js';
 import { isMdFile, uniquePath, uniqueInWorkspace, walkMarkdownPaths, collectMarkdownBasenamesLower } from './pathResolver.js';
 import { getProviders, getModels } from '@earendil-works/pi-ai';
+import { injectedModelIds } from './injectedModels.js';
 import { listBuiltinSkills, listWorkspaceSkills, importSkillToWorkspace, removeWorkspaceSkill, workspaceSkillsDir } from './skillLibrary.js';
 import { installAgentTokensBridge } from './agentTokensExtension.js';
 import { installOpenFileBridge } from './openFileExtension.js';
 import { ensureCliShims, prependPath } from './cliTools.js';
+import { mainFetch, formatFetchError } from './mainFetch.js';
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from './agentSystemPrompt.js';
 import {
   verifyPat as syncVerifyPat,
@@ -1012,7 +1014,7 @@ ipcMain.handle('voice:getToken', async () => {
   const apiKey = settings.transcription?.apiKey;
   if (!apiKey) return { error: 'Voice transcription not configured' };
   try {
-    const res = await fetch(
+    const res = await mainFetch(
       'https://streaming.assemblyai.com/v3/token?expires_in_seconds=60',
       { headers: { Authorization: apiKey } },
     );
@@ -1035,6 +1037,12 @@ ipcMain.handle('voice:getToken', async () => {
 // nowhere near that.
 const UPDATE_REPO = { owner: 'stephengpope', repo: 'shockwave' };
 const UPDATE_POLL_MS = 24 * 60 * 60 * 1000; // daily auto-check
+const UPDATE_FETCH_TIMEOUT_MS = 15_000;
+const UPDATE_FETCH_RETRIES = 2;
+const GITHUB_API_HEADERS = {
+  Accept: 'application/vnd.github+json',
+  'User-Agent': 'shockwave-app',
+};
 
 // "v1.2.3" / "1.2.3-beta" → [1,2,3]; the leading "v" and any pre-release/build
 // suffix are dropped (we only compare the numeric core).
@@ -1057,15 +1065,31 @@ function compareVersions(a: string, b: string): number {
 // check already ran (so the pill hydrates without waiting for the next poll).
 let lastUpdateResult: any = null;
 
+async function fetchLatestRelease() {
+  const url = `https://api.github.com/repos/${UPDATE_REPO.owner}/${UPDATE_REPO.repo}/releases/latest`;
+  let lastErr: any = null;
+  for (let attempt = 0; attempt < UPDATE_FETCH_RETRIES; attempt++) {
+    try {
+      const res = await mainFetch(url, {
+        headers: GITHUB_API_HEADERS,
+        signal: AbortSignal.timeout(UPDATE_FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err: any) {
+      lastErr = err;
+      if (attempt + 1 < UPDATE_FETCH_RETRIES) {
+        console.warn('[update] check attempt failed, retrying:', err.message);
+      }
+    }
+  }
+  throw lastErr;
+}
+
 async function runUpdateCheck() {
   const current = app.getVersion();
   try {
-    const res = await fetch(
-      `https://api.github.com/repos/${UPDATE_REPO.owner}/${UPDATE_REPO.repo}/releases/latest`,
-      { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(5000) },
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await fetchLatestRelease();
     const latest = String(data.tag_name || '').replace(/^v/i, '');
     const url = data.html_url
       || `https://github.com/${UPDATE_REPO.owner}/${UPDATE_REPO.repo}/releases/latest`;
@@ -1074,8 +1098,9 @@ async function runUpdateCheck() {
       latest, current, url, error: null,
     };
   } catch (err: any) {
-    console.warn('[update] check failed:', err.message);
-    lastUpdateResult = { updateAvailable: false, latest: null, current, url: null, error: err.message || 'check failed' };
+    const error = formatFetchError(err);
+    console.warn('[update] check failed:', error);
+    lastUpdateResult = { updateAvailable: false, latest: null, current, url: null, error };
   }
   for (const w of BrowserWindow.getAllWindows()) {
     w.webContents.send('app:updateStatus', lastUpdateResult);
@@ -1382,7 +1407,9 @@ ipcMain.handle('agent:listModels', (_evt, provider) => {
   if (!provider) return [];
   // openai-compatible has no static catalog — models come from the Validate
   // call (GET /v1/models) or are typed free-form. getModels returns [] here.
-  return getModels(provider).map((m) => m.id).sort();
+  const fromPi = getModels(provider).map((m) => m.id);
+  const injected = injectedModelIds(provider);
+  return [...new Set([...fromPi, ...injected])].sort();
 });
 
 // Validate an OpenAI-compatible endpoint by hitting `{baseUrl}/models` — no
@@ -1399,7 +1426,7 @@ ipcMain.handle('agent:validateConnection', async (_evt, { baseUrl, apiKey }) => 
     const headers: Record<string, string> = {};
     if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
-    const res = await fetch(`${base}/models`, { headers, signal: AbortSignal.timeout(5000) });
+    const res = await mainFetch(`${base}/models`, { headers, signal: AbortSignal.timeout(5000) });
     if (!res.ok) return { ok: false, error: `HTTP ${res.status} ${res.statusText}` };
     const body: any = await res.json();
     const models = (body.data ?? body.models ?? [])
@@ -1407,8 +1434,7 @@ ipcMain.handle('agent:validateConnection', async (_evt, { baseUrl, apiKey }) => 
       .filter(Boolean);
     return { ok: true, models: models.length ? models : undefined };
   } catch (err: any) {
-    if (err?.name === 'TimeoutError') return { ok: false, error: 'Connection timed out' };
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return { ok: false, error: formatFetchError(err) };
   }
 });
 
