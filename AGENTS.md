@@ -18,7 +18,7 @@
 - `omlx launch claude` does not override Claude Code's Z.AI env from `~/.claude/settings.json`; use `CLAUDECODE=0` or clear those env vars for local-only runs.
 - Dev machine: macOS M5 Max with 48GB unified memory — Ornith 35B via Ollama is a strong local option; Shockwave connects via `openai-compatible` at `http://localhost:11434/v1`.
 - `codex-plugin-cc` is installed in Claude Code (Codex reviews alongside Z.AI GLM); requires `/reload-plugins` then `/codex:setup`.
-- OmniRoute was trialed but not adopted (HTTP health hang, no providers configured); `omlx` remains the working local inference fallback.
 - Z.AI is the primary paid coding path (Claude Code + Shockwave `zai` provider); OpenRouter is exhausted and used only as an optional fallback.
-- Feature branch `cursor/github-fetch-and-electron-install` is at commit `9c7f882` (GLM-5.2 injection, vision hint, Dify knowledge bundle, `mainFetch`, `scripts/ensure-electron.mjs`).
-- `m3TAz-wURLd/slack-mcp-plugin-m3ta-hu3man` clone/wiring into m3ta hu3man 0s MCP configs was requested (Cursor/Hermes/Claude Code — may be config-only outside this repo).
+- GitHub fork is `EagleEyeVisionLabz/m3taz-shockwave`; [PR #1](https://github.com/EagleEyeVisionLabz/m3taz-shockwave/pull/1) on `cursor/github-fetch-and-electron-install` (mainFetch, ensure-electron, GLM-5.2, Dify bundle). Upstream releases still track `stephengpope/shockwave`.
+- Main-process outbound HTTP uses `src/main/mainFetch.ts` (Electron `net.fetch` with Node `fetch` fallback) for GitHub Sync verify/API, update checks, voice tokens, and agent connection validation.
+- `npm run dev` runs `scripts/ensure-electron.mjs` first; npm `allow-scripts` skipping electron postinstall causes "Electron uninstall" — fix with `npm approve-scripts electron && npm rebuild electron`.
