@@ -465,6 +465,8 @@ const ChatSidebar = forwardRef<any, any>(function ChatSidebar({ onClose, workspa
       // Main popped the bad user+failure messages from pi state. Mirror by
       // removing the matching user message from our transcript and surfacing
       // the provider error in the banner.
+      setRunning(false);
+      if (tickerRef.current) { clearInterval(tickerRef.current); tickerRef.current = null; }
       const badId = lastSentUserIdRef.current;
       lastSentUserIdRef.current = null;
       setMessages((prev) => prev.filter((m) => m.id !== badId));
@@ -508,7 +510,10 @@ const ChatSidebar = forwardRef<any, any>(function ChatSidebar({ onClose, workspa
     }]);
     setInput('');
     setAttachments([]);
-    setRunning(true);
+    // Running state is set on agent_start (not here). Pre-setting it here left the
+    // spinner stuck at "Working 0s" when main rejected the send before pi booted
+    // (e.g. missing API key) — agent:error clears running, but only if it wasn't
+    // flipped on prematurely.
     try {
       await window.api.agent.send(promptText, images);
     } catch (err: any) {
