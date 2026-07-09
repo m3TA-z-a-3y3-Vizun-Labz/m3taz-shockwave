@@ -11,9 +11,6 @@ import { fileURLToPath } from 'node:url';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const electronDir = path.join(root, 'node_modules', 'electron');
 const pathFile = path.join(electronDir, 'path.txt');
-const platformPath = process.platform === 'darwin'
-  ? 'Electron.app/Contents/MacOS/Electron'
-  : process.platform === 'win32' ? 'electron.exe' : 'electron';
 
 function electronReady() {
   if (!fs.existsSync(pathFile)) return false;
@@ -34,7 +31,8 @@ if (!electronReady()) {
 }
 
 // install.js writes path.txt without trimming; guard against a stray newline.
-const rel = fs.readFileSync(pathFile, 'utf8').trim();
-if (rel !== fs.readFileSync(pathFile, 'utf8')) {
+const raw = fs.readFileSync(pathFile, 'utf8');
+const rel = raw.trim();
+if (rel !== raw) {
   fs.writeFileSync(pathFile, rel);
 }

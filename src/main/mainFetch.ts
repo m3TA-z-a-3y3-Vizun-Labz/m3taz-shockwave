@@ -5,12 +5,20 @@ export const MAIN_FETCH_TIMEOUT_MS = 30_000;
 /** Outbound HTTP — Chromium stack first (proxy/VPN), Node fetch as fallback. */
 export async function mainFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   let lastErr: any = null;
+  const actualInit = init?.signal
+    ? init
+    : { ...init, signal: AbortSignal.timeout(MAIN_FETCH_TIMEOUT_MS) };
+
   for (const attempt of [tryNetFetch, tryNodeFetch]) {
     try {
-      return await attempt(input, init);
+      return await attempt(input, actualInit);
     } catch (err: any) {
       lastErr = err;
-      console.warn('[mainFetch] attempt failed:', err.message, err.cause?.code || err.cause?.message || '');
+      console.warn(
+        '[mainFetch] attempt failed:',
+        err?.message,
+        err?.cause?.code || err?.cause?.message || '',
+      );
     }
   }
   throw lastErr;

@@ -1407,7 +1407,7 @@ ipcMain.handle('agent:listModels', (_evt, provider) => {
   if (!provider) return [];
   // openai-compatible has no static catalog — models come from the Validate
   // call (GET /v1/models) or are typed free-form. getModels returns [] here.
-  const fromPi = getModels(provider).map((m) => m.id);
+  const fromPi = (getModels(provider) ?? []).map((m) => m.id);
   const injected = injectedModelIds(provider);
   return [...new Set([...fromPi, ...injected])].sort();
 });

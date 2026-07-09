@@ -100,7 +100,7 @@ async function ensureSession({ workspacePath, provider, model, apiKey, baseUrl, 
       if (injected) {
         // registerProvider replaces the provider's full model list — merge the
         // pi-ai catalog with the injected entry so other models stay selectable.
-        const catalog = getModels(provider).map((m) => ({
+        const catalog = (getModels(provider) ?? []).map((m) => ({
           id: m.id,
           name: m.name,
           reasoning: m.reasoning,
