@@ -192,6 +192,14 @@ export interface ShockwaveApi {
     getToken(): Promise<{ token?: string; error?: string }>;
   };
 
+  tts: {
+    speak(opts: { text: string }): Promise<{ audioBase64?: string; mimeType?: string; error?: string }>;
+    listVoices(): Promise<{
+      voices?: Array<{ voiceId: string; name: string; previewUrl?: string | null }>;
+      error?: string;
+    }>;
+  };
+
   app: {
     checkForUpdates(): Promise<UpdateStatus>;
     getUpdateStatus(): Promise<UpdateStatus | null>;

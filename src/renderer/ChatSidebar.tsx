@@ -1,7 +1,7 @@
 import React, { createContext, forwardRef, memo, useCallback, useContext, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { PaperclipIcon, PlayIcon, StopIcon, RotateCcwIcon, XIcon, FileTextIcon, MicIcon, PanelRightCloseIcon, CopyIcon, CheckIcon } from './Icons.jsx';
+import { PaperclipIcon, PlayIcon, StopIcon, RotateCcwIcon, XIcon, FileTextIcon, MicIcon, PanelRightCloseIcon, CopyIcon, CheckIcon, VolumeIcon, VolumeXIcon } from './Icons.jsx';
 import { resolveImageUrl } from './imageWidgets.js';
 import {
   classify,
@@ -14,6 +14,7 @@ import {
 } from './chatAttachments.js';
 import { useVoiceInput } from './voice/useVoiceInput.js';
 import { VoiceBars } from './voice/VoiceBars.jsx';
+import { speakText, stopSpeaking, onSpeakStateChange } from './voice/speakText.js';
 
 // Workspace path available to MARKDOWN_COMPONENTS' `img` override via context,
 // so the module-level components object stays referentially stable (preserving
@@ -238,6 +239,72 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function SpeakButton({ text }: { text: string }) {
+  const [busy, setBusy] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const thisPlayingRef = useRef(false);
+
+  useEffect(() => {
+    return onSpeakStateChange((isPlaying) => {
+      if (!isPlaying && thisPlayingRef.current) {
+        thisPlayingRef.current = false;
+        setPlaying(false);
+        setBusy(false);
+      }
+    });
+  }, []);
+
+  const onClick = useCallback(async (e: any) => {
+    e.stopPropagation();
+    const value = text ?? '';
+    if (!value) return;
+
+    // Toggle off if this button is the active speaker.
+    if (thisPlayingRef.current || playing) {
+      stopSpeaking();
+      thisPlayingRef.current = false;
+      setPlaying(false);
+      setBusy(false);
+      return;
+    }
+
+    setErr(null);
+    setBusy(true);
+    thisPlayingRef.current = true;
+    setPlaying(true);
+    const error = await speakText(value);
+    if (error) {
+      thisPlayingRef.current = false;
+      setPlaying(false);
+      setBusy(false);
+      setErr(error);
+      return;
+    }
+    // onended / stopSpeaking clears playing via onSpeakStateChange
+    setBusy(false);
+  }, [text, playing]);
+
+  const label = err
+    ? err
+    : playing || busy
+      ? 'Stop speaking'
+      : 'Speak message';
+
+  return (
+    <button
+      type="button"
+      className={`chat-copy-btn chat-speak-btn${err ? ' chat-speak-btn-error' : ''}`}
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      disabled={busy && !playing}
+    >
+      {(playing || busy) ? <VolumeXIcon size={12} /> : <VolumeIcon size={12} />}
+    </button>
+  );
+}
+
 // One rendered chat row. Memoized so typing in the composer (which re-renders
 // the parent ChatSidebar) does NOT walk every message and call ReactMarkdown
 // again. Every message object is referentially stable across non-mutating
@@ -264,7 +331,12 @@ const MessageRow = memo(function MessageRow({ message: m }: any) {
         <div className="chat-bubble chat-markdown">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS as any}>{m.text}</ReactMarkdown>
         </div>
-        {m.text && <CopyButton text={m.text} />}
+        {m.text && (
+          <div className="chat-msg-actions">
+            <SpeakButton text={m.text} />
+            <CopyButton text={m.text} />
+          </div>
+        )}
       </div>
     );
   }

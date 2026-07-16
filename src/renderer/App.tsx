@@ -217,11 +217,11 @@ export default function App() {
   const {
     themeMode, hideLineNumbers, dailyNotesInBookmarks, bookmarkFilterActive,
     dailyNote, dailyNoteRef, templates, builtinSkills, treeSortOrder,
-    codingAgentSettings, agentSecrets, transcription, sync, syncRef,
+    codingAgentSettings, agentSecrets, transcription, tts, sync, syncRef,
     saveStatus, persistSettings, hydrateSettings, loadWorkspaceData,
     onThemeModeChange, onHideLineNumbersChange, onDailyNotesInBookmarksChange,
     onBookmarkFilterActiveChange, onDailyNoteChange, onTemplatesChange, onBuiltinSkillToggle, onTreeSortOrderChange,
-    onCodingAgentChange, onGlobalBuiltinSkillToggle, onAgentSecretsChange, onTranscriptionChange,
+    onCodingAgentChange, onGlobalBuiltinSkillToggle, onAgentSecretsChange, onTranscriptionChange, onTtsChange,
     onSyncChange, onSyncDisabledChange,
   } = useSettings({ activeWorkspacePath: workspacePath });
 
@@ -1878,6 +1878,8 @@ export default function App() {
           onAgentSecretsChange={onAgentSecretsChange}
           transcription={transcription}
           onTranscriptionChange={onTranscriptionChange}
+          tts={tts}
+          onTtsChange={onTtsChange}
           sync={sync}
           onSyncChange={onSyncChange}
           onSyncDisabledChange={onSyncDisabledChange}

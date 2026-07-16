@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useSyncRef } from './useSyncRef';
 import { THEME_MODES, VIEW_MODES, TREE_SORT_ORDERS, DEFAULT_PROVIDER_SLUG } from '../constants';
-import type { Settings, WorkspaceData, ThemeMode, ViewMode, TreeSortOrder, CodingAgentSettings, AgentSecret } from '../../shared/settings';
+import type { Settings, WorkspaceData, ThemeMode, ViewMode, TreeSortOrder, CodingAgentSettings, AgentSecret, TtsSettings } from '../../shared/settings';
 
 // dailyNote + templates moved to the per-workspace WorkspaceData.
 type DailyNote = WorkspaceData['dailyNote'];
@@ -9,15 +9,23 @@ type Templates = WorkspaceData['templates'];
 type Transcription = Settings['transcription'];
 type SyncSettings = Settings['sync'];
 
+const DEFAULT_TTS: TtsSettings = {
+  provider: 'elevenlabs',
+  apiKey: '',
+  voiceId: 'JBFqnCBsd6RMkjVDRZzb',
+  modelId: 'eleven_multilingual_v2',
+};
+
 // Default canonical object — mirrors main's DEFAULT_SETTINGS + the renderer
 // fallbacks. Seeded for real from disk via hydrate() before any user action.
 const DEFAULT_CANONICAL: Settings = {
   workspaces: [],
   activeWorkspaceId: null,
   appearance: { themeMode: THEME_MODES.SYSTEM, hideLineNumbers: false, dailyNotesInBookmarks: false },
-  codingAgent: { provider: DEFAULT_PROVIDER_SLUG, model: 'claude-sonnet-4-5', apiKey: '', baseUrl: '', systemPrompt: '', builtinSkills: {} },
+  codingAgent: { provider: DEFAULT_PROVIDER_SLUG, model: 'gpt-5-codex', apiKey: '', baseUrl: '', systemPrompt: '', builtinSkills: {} },
   agentSecrets: [],
   transcription: { provider: 'assemblyai', apiKey: '' },
+  tts: { ...DEFAULT_TTS },
   sync: { pat: '', pullIntervalSeconds: 10, disabledWorkspaceIds: [] },
   chatSidebarOpen: false,
   chatSidebarWidth: 360,
@@ -56,6 +64,7 @@ export function useSettings({ activeWorkspacePath }: UseSettingsOpts) {
   const [codingAgentSettings, setCodingAgentSettings] = useState<CodingAgentSettings>(DEFAULT_CANONICAL.codingAgent);
   const [agentSecrets, setAgentSecrets] = useState<AgentSecret[]>([]);
   const [transcription, setTranscription] = useState<Transcription>({ provider: 'assemblyai', apiKey: '' });
+  const [tts, setTts] = useState<TtsSettings>({ ...DEFAULT_TTS });
   const [sync, setSync] = useState<SyncSettings>({ pat: '', pullIntervalSeconds: 10, disabledWorkspaceIds: [] });
   const syncRef = useSyncRef(sync);
 
@@ -87,6 +96,7 @@ export function useSettings({ activeWorkspacePath }: UseSettingsOpts) {
         codingAgent: s.codingAgent,
         agentSecrets: s.agentSecrets,
         transcription: s.transcription,
+        tts: s.tts,
         sync: s.sync,
         sidebarWidth: s.sidebarWidth,
         viewMode: s.viewMode,
@@ -203,6 +213,11 @@ export function useSettings({ activeWorkspacePath }: UseSettingsOpts) {
     await persistSettings({ transcription: next });
   }, [persistSettings]);
 
+  const onTtsChange = useCallback(async (next: TtsSettings) => {
+    setTts(next);
+    await persistSettings({ tts: next });
+  }, [persistSettings]);
+
   // Per-workspace sync disable toggle. Persisted via IPC elsewhere; we mirror the
   // disabled-set into local state + keep settingsRef coherent so a later save
   // doesn't write a stale sync.
@@ -232,6 +247,12 @@ export function useSettings({ activeWorkspacePath }: UseSettingsOpts) {
   // fire (so an unchanged field isn't written as its default and clobbered).
   const hydrateSettings = useCallback((disk: any) => {
     const tr: Transcription = { provider: disk.transcription?.provider || 'assemblyai', apiKey: disk.transcription?.apiKey || '' };
+    const ttsNext: TtsSettings = {
+      provider: disk.tts?.provider || DEFAULT_TTS.provider,
+      apiKey: disk.tts?.apiKey || '',
+      voiceId: disk.tts?.voiceId || DEFAULT_TTS.voiceId,
+      modelId: disk.tts?.modelId || DEFAULT_TTS.modelId,
+    };
     const sy: SyncSettings = {
       pat: disk.sync?.pat || '',
       pullIntervalSeconds: typeof disk.sync?.pullIntervalSeconds === 'number' && disk.sync.pullIntervalSeconds > 0 ? disk.sync.pullIntervalSeconds : 10,
@@ -252,6 +273,7 @@ export function useSettings({ activeWorkspacePath }: UseSettingsOpts) {
       codingAgent: ca,
       agentSecrets: secrets,
       transcription: tr,
+      tts: ttsNext,
       sync: sy,
       chatSidebarOpen: typeof disk.chatSidebarOpen === 'boolean' ? disk.chatSidebarOpen : false,
       chatSidebarWidth: typeof disk.chatSidebarWidth === 'number' ? disk.chatSidebarWidth : 360,
@@ -269,17 +291,18 @@ export function useSettings({ activeWorkspacePath }: UseSettingsOpts) {
     if (disk.codingAgent) setCodingAgentSettings(ca);
     if (Array.isArray(disk.agentSecrets)) setAgentSecrets(secrets);
     if (disk.transcription) setTranscription(tr);
+    setTts(ttsNext);
     if (disk.sync) { setSync(sy); syncRef.current = sy; }
   }, [dailyNoteRef, syncRef]);
 
   return {
     themeMode, hideLineNumbers, dailyNotesInBookmarks, bookmarkFilterActive,
     dailyNote, dailyNoteRef, templates, builtinSkills, treeSortOrder,
-    codingAgentSettings, agentSecrets, transcription, sync, syncRef,
+    codingAgentSettings, agentSecrets, transcription, tts, sync, syncRef,
     settingsRef, saveStatus, persistSettings, hydrateSettings, loadWorkspaceData,
     onThemeModeChange, onHideLineNumbersChange, onDailyNotesInBookmarksChange,
     onBookmarkFilterActiveChange, onDailyNoteChange, onTemplatesChange, onBuiltinSkillToggle, onTreeSortOrderChange,
-    onCodingAgentChange, onGlobalBuiltinSkillToggle, onAgentSecretsChange, onTranscriptionChange,
+    onCodingAgentChange, onGlobalBuiltinSkillToggle, onAgentSecretsChange, onTranscriptionChange, onTtsChange,
     onSyncChange, onSyncDisabledChange,
   };
 }

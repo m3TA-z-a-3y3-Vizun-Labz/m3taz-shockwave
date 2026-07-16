@@ -88,8 +88,8 @@ const DEFAULT_SETTINGS = {
   appearance: { themeMode: 'system', hideLineNumbers: false, dailyNotesInBookmarks: false },
   // Daily-note + template config moved to per-workspace `.shockwave/workspace.json`.
   codingAgent: {
-    provider: 'anthropic',
-    model: 'claude-sonnet-4-5',
+    provider: 'openai',
+    model: 'gpt-5-codex',
     apiKey: '',
     // OpenAI-compatible endpoint URL; only set when provider is 'openai-compatible'.
     baseUrl: '',
@@ -110,6 +110,17 @@ const DEFAULT_SETTINGS = {
   // streaming tokens via the `voice:getToken` IPC, which is what the WebSocket
   // to AssemblyAI authenticates with.
   transcription: { provider: 'assemblyai', apiKey: '' },
+  // Text-to-speech (ElevenLabs). `apiKey` is encrypted on disk via safeStorage.
+  // The renderer never sees the key — it asks main to synthesize via `tts:speak`
+  // and receives base64 audio back for playback.
+  // Default voice is George (JBFqnCBsd6RMkjVDRZzb); model matches ElevenLabs
+  // multilingual v2 quickstart.
+  tts: {
+    provider: 'elevenlabs',
+    apiKey: '',
+    voiceId: 'JBFqnCBsd6RMkjVDRZzb',
+    modelId: 'eleven_multilingual_v2',
+  },
   // GitHub sync. `pat` is a GitHub Personal Access Token, encrypted on disk
   // via safeStorage. Decrypted only into the env of git child processes (via
   // GIT_ASKPASS helper); never written to .git/config or any other on-disk
@@ -240,6 +251,10 @@ async function readSettings() {
         ...DEFAULT_SETTINGS.transcription,
         ...(parsed.transcription ?? {}),
       },
+      tts: {
+        ...DEFAULT_SETTINGS.tts,
+        ...(parsed.tts ?? {}),
+      },
       sync: {
         ...DEFAULT_SETTINGS.sync,
         ...(parsed.sync ?? {}),
@@ -257,6 +272,7 @@ async function readSettings() {
       token: decryptSecret(s.token ?? ''),
     }));
     merged.transcription.apiKey = decryptSecret(merged.transcription.apiKey);
+    merged.tts.apiKey = decryptSecret(merged.tts.apiKey);
     merged.sync.pat = decryptSecret(merged.sync.pat);
     return merged;
   } catch {
@@ -305,6 +321,13 @@ async function doWriteSettings(patch) {
     }));
   }
   if (out.transcription) out.transcription.apiKey = encryptSecret(out.transcription.apiKey ?? '');
+  if (out.tts) {
+    // Deep-merge so a partial tts patch doesn't wipe voice/model.
+    if ((existing as any).tts) {
+      (out as any).tts = { ...(existing as any).tts, ...out.tts };
+    }
+    out.tts.apiKey = encryptSecret(out.tts.apiKey ?? '');
+  }
   if (out.sync) out.sync.pat = encryptSecret(out.sync.pat ?? '');
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(tmp, JSON.stringify(out, null, 2), 'utf8');
@@ -1024,6 +1047,100 @@ ipcMain.handle('voice:getToken', async () => {
   } catch (err: any) {
     console.warn('[voice] token request failed:', err.message);
     return { error: 'Voice token request failed' };
+  }
+});
+
+// ─── ElevenLabs text-to-speech ─────────────────────────────────────────────
+// API key stays in main; renderer sends plain text and gets base64 MP3 back.
+const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io/v1';
+const TTS_MAX_CHARS = 5000;
+const TTS_FETCH_TIMEOUT_MS = 60_000;
+
+function stripMarkdownForTts(text: string): string {
+  if (!text) return '';
+  return String(text)
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/[*_~|>]+/g, '')
+    .replace(/\n{2,}/g, '. ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+ipcMain.handle('tts:speak', async (_evt, payload: { text?: string } = {}) => {
+  const settings = await readSettings();
+  const apiKey = settings.tts?.apiKey;
+  if (!apiKey) return { error: 'Text-to-speech not configured — add an ElevenLabs API key in Settings → Speech' };
+
+  const voiceId = (settings.tts?.voiceId || DEFAULT_SETTINGS.tts.voiceId).trim();
+  const modelId = (settings.tts?.modelId || DEFAULT_SETTINGS.tts.modelId).trim();
+  let text = stripMarkdownForTts(payload?.text ?? '');
+  if (!text) return { error: 'Nothing to speak' };
+  if (text.length > TTS_MAX_CHARS) text = text.slice(0, TTS_MAX_CHARS);
+
+  try {
+    const url = `${ELEVENLABS_API_BASE}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
+    const res = await mainFetch(url, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': apiKey,
+        'Content-Type': 'application/json',
+        Accept: 'audio/mpeg',
+      },
+      body: JSON.stringify({
+        text,
+        model_id: modelId,
+      }),
+      signal: AbortSignal.timeout(TTS_FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const errBody = await res.json();
+        detail = errBody?.detail?.message || errBody?.detail || errBody?.message || '';
+      } catch { /* ignore */ }
+      console.warn('[tts] speak failed:', res.status, detail);
+      if (res.status === 401) return { error: 'Invalid ElevenLabs API key' };
+      if (res.status === 402) return { error: 'ElevenLabs quota exceeded' };
+      return { error: detail ? `TTS failed: ${detail}` : `TTS failed (${res.status})` };
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    return { audioBase64: buf.toString('base64'), mimeType: 'audio/mpeg' };
+  } catch (err: any) {
+    console.warn('[tts] speak request failed:', err?.message);
+    return { error: 'TTS request failed — check network and API key' };
+  }
+});
+
+ipcMain.handle('tts:listVoices', async () => {
+  const settings = await readSettings();
+  const apiKey = settings.tts?.apiKey;
+  if (!apiKey) return { error: 'Text-to-speech not configured', voices: [] };
+  try {
+    const res = await mainFetch(`${ELEVENLABS_API_BASE}/voices`, {
+      headers: { 'xi-api-key': apiKey, Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      if (res.status === 401) return { error: 'Invalid ElevenLabs API key', voices: [] };
+      return { error: `Failed to list voices (${res.status})`, voices: [] };
+    }
+    const data = await res.json();
+    const voices = Array.isArray(data?.voices)
+      ? data.voices.map((v: any) => ({
+          voiceId: v.voice_id,
+          name: v.name || v.voice_id,
+          previewUrl: v.preview_url || null,
+        }))
+      : [];
+    return { voices };
+  } catch (err: any) {
+    console.warn('[tts] listVoices failed:', err?.message);
+    return { error: 'Failed to list voices', voices: [] };
   }
 });
 
