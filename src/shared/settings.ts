@@ -74,6 +74,16 @@ export interface WorkspaceData {
   builtinSkills: Record<string, SkillState>;
 }
 
+/** ElevenLabs text-to-speech. `apiKey` is encrypted on disk via safeStorage. */
+export interface TtsSettings {
+  provider: 'elevenlabs' | string;
+  apiKey: string;
+  /** ElevenLabs voice_id (e.g. George = JBFqnCBsd6RMkjVDRZzb). */
+  voiceId: string;
+  /** Model id, e.g. eleven_multilingual_v2. */
+  modelId: string;
+}
+
 export interface Settings {
   workspaces: WorkspaceEntry[];
   activeWorkspaceId: string | null;
@@ -84,6 +94,8 @@ export interface Settings {
   codingAgent: CodingAgentSettings;
   agentSecrets: AgentSecret[];
   transcription: { provider: string; apiKey: string };
+  /** Text-to-speech for agent replies (ElevenLabs). */
+  tts: TtsSettings;
   sync: { pat: string; pullIntervalSeconds: number; disabledWorkspaceIds: string[] };
   chatSidebarOpen: boolean;
   chatSidebarWidth: number;

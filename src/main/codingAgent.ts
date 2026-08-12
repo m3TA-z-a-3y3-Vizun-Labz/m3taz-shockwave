@@ -11,11 +11,12 @@
 // system prompt. Pi never auto-scans our skill-library folder.
 
 import { createAgentSession, AuthStorage, ModelRegistry, SessionManager, DefaultResourceLoader } from '@earendil-works/pi-coding-agent';
-import { getModel } from '@earendil-works/pi-ai';
+import { getModel, getModels } from '@earendil-works/pi-ai';
 import { agentDirFor, ensureDirs, listBuiltinSkills, listWorkspaceSkills, computeEffectivePaths, writePiSettings } from './skillLibrary.js';
 import { ensureAgentTokensExtension } from './agentTokensExtension.js';
 import { ensureOpenFileExtension } from './openFileExtension.js';
 import { DEFAULT_AGENT_SYSTEM_PROMPT } from './agentSystemPrompt.js';
+import { findInjectedModel } from './injectedModels.js';
 
 const state: any = {
   session: null,
@@ -94,6 +95,32 @@ async function ensureSession({ workspacePath, provider, model, apiKey, baseUrl, 
   } else {
     authStorage.setRuntimeApiKey(provider, apiKey);
     modelObj = getModel(provider, model);
+    if (!modelObj) {
+      const injected = findInjectedModel(provider, model);
+      if (injected) {
+        // registerProvider replaces the provider's full model list — merge the
+        // pi-ai catalog with the injected entry so other models stay selectable.
+        const catalog = (getModels(provider) ?? []).map((m) => ({
+          id: m.id,
+          name: m.name,
+          reasoning: m.reasoning,
+          input: m.input,
+          cost: m.cost,
+          contextWindow: m.contextWindow,
+          maxTokens: m.maxTokens,
+          api: m.api,
+          compat: m.compat,
+        }));
+        modelRegistry.registerProvider(provider, {
+          baseUrl: injected.baseUrl,
+          apiKey,
+          api: injected.api,
+          models: [...catalog, injected],
+        });
+        modelObj = modelRegistry.find(provider, model);
+      }
+    }
+    if (!modelObj) throw new Error(`Unknown model "${model}" for provider "${provider}".`);
   }
 
   // Custom resource loader so we can override pi's default coding-agent system

@@ -21,6 +21,9 @@ on:
 
 jobs:
   build:
+    # Skip when Datadog keys are not configured (e.g. forks, new repos). Add
+    # DD_API_KEY and DD_APP_KEY repository secrets to run synthetics in CI.
+    if: ${{ secrets.DD_API_KEY != '' && secrets.DD_APP_KEY != '' }}
     runs-on: ubuntu-latest
 
     steps:

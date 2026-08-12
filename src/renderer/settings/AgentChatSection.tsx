@@ -222,6 +222,11 @@ export default function AgentChatSection({ codingAgent, onCodingAgentChange }) {
       </p>
 
       <h3 className="settings-subsection-title">LLM</h3>
+      <p className="settings-field-hint">
+        For image analysis in chat, use provider <code>zai</code> with model{' '}
+        <code>glm-5v-turbo</code> (or OpenRouter <code>z-ai/glm-5v-turbo</code>) and attach
+        images via the paperclip in the sidebar.
+      </p>
       <ProviderModelKey
         idPrefix="coding-agent"
         provider={caProvider}

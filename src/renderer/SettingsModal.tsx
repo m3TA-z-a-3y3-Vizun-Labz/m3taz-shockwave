@@ -10,6 +10,7 @@ import AgentSecretsSection from './settings/AgentSecretsSection.jsx';
 import DailyNoteSection from './settings/DailyNoteSection.jsx';
 import TemplatesSection from './settings/TemplatesSection.jsx';
 import TranscriptionSection from './settings/TranscriptionSection.jsx';
+import TtsSection from './settings/TtsSection.jsx';
 import SyncSection from './settings/SyncSection.jsx';
 import UpdatesSection from './settings/UpdatesSection.jsx';
 
@@ -28,6 +29,7 @@ function buildNav(workspaceLabel) {
     { kind: 'item', id: SETTINGS_SECTIONS.APPEARANCE, label: 'Appearance' },
     { kind: 'item', id: SETTINGS_SECTIONS.SYNC, label: 'GitHub Sync' },
     { kind: 'item', id: SETTINGS_SECTIONS.TRANSCRIPTION, label: 'Transcription' },
+    { kind: 'item', id: SETTINGS_SECTIONS.TTS, label: 'Speech' },
     { kind: 'item', id: SETTINGS_SECTIONS.UPDATES, label: 'Updates' },
     { kind: 'header', label: workspaceLabel },
     { kind: 'item', id: SETTINGS_SECTIONS.DAILY_NOTE, label: 'Daily Notes' },
@@ -82,6 +84,8 @@ export default function SettingsModal({
   onAgentSecretsChange,
   transcription,
   onTranscriptionChange,
+  tts,
+  onTtsChange,
   sync,
   onSyncChange,
   onSyncDisabledChange,
@@ -209,6 +213,12 @@ export default function SettingsModal({
             <TranscriptionSection
               transcription={transcription}
               onTranscriptionChange={onTranscriptionChange}
+            />
+          )}
+          {active === SETTINGS_SECTIONS.TTS && (
+            <TtsSection
+              tts={tts}
+              onTtsChange={onTtsChange}
             />
           )}
           {active === SETTINGS_SECTIONS.UPDATES && (

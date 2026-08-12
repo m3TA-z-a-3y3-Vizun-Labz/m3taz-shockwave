@@ -319,6 +319,26 @@ contextBridge.exposeInMainWorld('api', {
     getToken: () => ipcRenderer.invoke('voice:getToken'),
   },
 
+  // ---- Text-to-speech (ElevenLabs) ----------------------------------------
+  //
+  // The long-lived ElevenLabs API key sits encrypted in settings and never
+  // crosses this bridge. The renderer sends plain text; main synthesizes and
+  // returns base64 audio for local playback.
+
+  tts: {
+    /**
+     * Synthesize speech for the given text.
+     * @param {{ text: string }} opts
+     * @returns {Promise<{ audioBase64?: string, mimeType?: string, error?: string }>}
+     */
+    speak: (opts) => ipcRenderer.invoke('tts:speak', opts),
+    /**
+     * List available ElevenLabs voices for the configured key.
+     * @returns {Promise<{ voices?: Array<{ voiceId: string, name: string, previewUrl?: string|null }>, error?: string }>}
+     */
+    listVoices: () => ipcRenderer.invoke('tts:listVoices'),
+  },
+
   // ---- App / updates ------------------------------------------------------
   //
   // v1 update check is notify-only: main polls GitHub releases and pushes an

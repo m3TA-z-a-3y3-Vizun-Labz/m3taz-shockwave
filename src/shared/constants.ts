@@ -68,4 +68,4 @@ export const SUPPORTED_PROVIDER_SLUGS = Object.freeze([
   'openai-compatible',
 ] as const);
 
-export const DEFAULT_PROVIDER_SLUG = 'anthropic';
+export const DEFAULT_PROVIDER_SLUG = 'openai';
